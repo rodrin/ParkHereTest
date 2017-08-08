@@ -1,6 +1,8 @@
 package com.example.rodrin.parkhere;
 
         import android.Manifest;
+        import android.app.PendingIntent;
+        import android.content.Intent;
         import android.content.pm.PackageManager;
         import android.location.Location;
         import android.os.Build;
@@ -8,10 +10,16 @@ package com.example.rodrin.parkhere;
         import android.support.v4.app.FragmentActivity;
         import android.os.Bundle;
         import android.support.v4.content.ContextCompat;
+        import android.util.Log;
+        import android.view.View;
+        import android.view.View.OnClickListener;
+        import android.widget.TextView;
         import android.widget.Toast;
 
+        import com.example.rodrin.parkhere.ActivityRecognizedService;
         import com.google.android.gms.common.ConnectionResult;
         import com.google.android.gms.common.api.GoogleApiClient;
+        import com.google.android.gms.location.ActivityRecognition;
         import com.google.android.gms.location.LocationListener;
         import com.google.android.gms.location.LocationRequest;
         import com.google.android.gms.location.LocationServices;
@@ -27,13 +35,23 @@ package com.example.rodrin.parkhere;
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback,
         GoogleApiClient.ConnectionCallbacks,
         GoogleApiClient.OnConnectionFailedListener,
-        LocationListener {
+        LocationListener, OnClickListener  {
 
+
+    //para
     private GoogleMap mMap;
+    public static final int MY_PERMISSIONS_REQUEST_LOCATION = 99;
     GoogleApiClient mGoogleApiClient;
     Location mLastLocation;
     Marker mCurrLocationMarker;
     LocationRequest mLocationRequest;
+    TextView txt,txt2,txt3,txt4;
+    public ActivityRecognizedService activityRecognition = new ActivityRecognizedService();
+    boolean inside;
+    static int vehicle;
+    boolean park = false;
+    static String parktxt = "not park";
+    static int status = 999;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,8 +65,160 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
+
+
+
+
+        txt = (TextView) findViewById(R.id.textView);
+        txt2 = (TextView) findViewById(R.id.textView2);
+        txt3 = (TextView) findViewById(R.id.textView3);
+        txt4 = (TextView) findViewById(R.id.textView4);
+
+
+        txt.setOnClickListener(this);
+
     }
 
+    public boolean checkActivity(){
+        if(vehicle==0 ){
+            return true;
+        }
+        return false;
+    }
+
+    public void showStatus(){
+        if(checkActivity() && !inside && !park){
+            status=1;
+            txt3.setText(parktxt);
+        }
+        if(status==1 && inside && !park){
+            status=2;
+            txt3.setText(parktxt);
+        }
+        if(status==2){
+            if(!checkActivity() && inside && !park){
+                status=3;
+                txt3.setText(parktxt);
+            }else if(checkActivity() && !inside && park){
+                status=1;
+                park=false;
+                parktxt="Not Park";
+                txt3.setText(parktxt);
+            }
+        }
+        if(status==3){
+            if(!checkActivity() && !inside && !park){
+                status=4;
+                park=true;
+                parktxt="Park";
+                txt3.setText(parktxt);
+            }else if(checkActivity() && inside && park){
+                status=2;
+                txt3.setText(parktxt);
+            }
+        }
+
+        if(status==4){
+            if (inside && park){
+                status=3;
+                txt3.setText(parktxt);
+            }
+        }
+
+        txt3.setText(parktxt);
+        txt4.setText("Status = "+status);
+    }
+
+    public void showActivity(){
+
+        txt2.setText(activityRecognition.getActivity()+"");
+        vehicle=activityRecognition.getActivity();
+
+        if(vehicle==0){
+            txt2.setText("In Vehicle"+vehicle);
+        }else{
+            txt2.setText("Not in vehicle"+vehicle);
+        }
+    }
+
+    public void showResult(String t){
+        txt.setText(t);
+    }
+
+    public void onClick(View v){
+        txt.setText("FUCK555");
+
+    }
+
+    protected synchronized void buildGoogleApiClient() {
+        mGoogleApiClient = new GoogleApiClient.Builder(this)
+                .addConnectionCallbacks(this)
+                .addOnConnectionFailedListener(this)
+                .addApi(LocationServices.API)
+                .addApi(ActivityRecognition.API)
+                .build();
+        mGoogleApiClient.connect();
+    }
+
+    @Override
+    public void onLocationChanged(Location location) {
+
+        mLastLocation = location;
+
+        float[] distance = new float[2];
+
+                        /*
+                        Location.distanceBetween( mMarker.getPosition().latitude, mMarker.getPosition().longitude,
+                                mCircle.getCenter().latitude, mCircle.getCenter().longitude, distance);
+                                */
+
+        Location.distanceBetween( location.getLatitude(), location.getLongitude(),
+                13.650529, 100.495745, distance);
+
+        String txt = "eieiza55plus";
+        if( distance[0] > 30 ){
+            Log.e("Outside "+location.getLatitude(),location.getLongitude()+"");
+            Toast.makeText(getBaseContext(), "Outside, distance from center: " + distance[0] + " radius: " + 20, Toast.LENGTH_LONG).show();
+            showResult("Outside");
+            inside=false;
+            txt="Outside"+distance[0];
+
+        } else {
+            Log.e("Inside "+location.getLatitude()+"",location.getLongitude()+"");
+            Toast.makeText(getBaseContext(), "Inside, distance from center: " + distance[0] + " radius: " + 20 , Toast.LENGTH_LONG).show();
+            showResult("Inside");
+            inside=true;
+            txt="Inside";
+        }
+
+        if (mCurrLocationMarker != null) {
+            mCurrLocationMarker.remove();
+        }
+
+        //Place current location marker
+        LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
+        MarkerOptions markerOptions = new MarkerOptions();
+        markerOptions.position(latLng);
+        markerOptions.title("Current Position");
+        markerOptions.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
+
+        markerOptions.snippet(txt);
+        markerOptions.draggable(true);
+        mCurrLocationMarker = mMap.addMarker(markerOptions);
+
+
+        //move map camera
+        mMap.moveCamera(CameraUpdateFactory.newLatLng(latLng));
+        mMap.animateCamera(CameraUpdateFactory.zoomTo(11));
+
+        showActivity();
+        showStatus();
+
+        //stop location updates
+        if (mGoogleApiClient != null) {
+            LocationServices.FusedLocationApi.removeLocationUpdates(mGoogleApiClient, this);
+        }
+    }
 
     /**
      * Manipulates the map once available.
@@ -79,15 +249,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
     }
 
-    protected synchronized void buildGoogleApiClient() {
-        mGoogleApiClient = new GoogleApiClient.Builder(this)
-                .addConnectionCallbacks(this)
-                .addOnConnectionFailedListener(this)
-                .addApi(LocationServices.API)
-                .build();
-        mGoogleApiClient.connect();
-    }
-
     @Override
     public void onConnected(Bundle bundle) {
 
@@ -101,6 +262,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             LocationServices.FusedLocationApi.requestLocationUpdates(mGoogleApiClient, mLocationRequest, this);
         }
 
+
+        Intent intent = new Intent( this, ActivityRecognizedService.class );
+        PendingIntent pendingIntent = PendingIntent.getService( this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT );
+        ActivityRecognition.ActivityRecognitionApi.requestActivityUpdates( mGoogleApiClient, 3000, pendingIntent );
+
+
+
     }
 
     @Override
@@ -109,38 +277,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
     @Override
-    public void onLocationChanged(Location location) {
-
-        mLastLocation = location;
-        if (mCurrLocationMarker != null) {
-            mCurrLocationMarker.remove();
-        }
-
-        //Place current location marker
-        LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
-        MarkerOptions markerOptions = new MarkerOptions();
-        markerOptions.position(latLng);
-        markerOptions.title("Current Position");
-        markerOptions.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
-        mCurrLocationMarker = mMap.addMarker(markerOptions);
-
-        //move map camera
-        mMap.moveCamera(CameraUpdateFactory.newLatLng(latLng));
-        mMap.animateCamera(CameraUpdateFactory.zoomTo(11));
-
-        //stop location updates
-        if (mGoogleApiClient != null) {
-            LocationServices.FusedLocationApi.removeLocationUpdates(mGoogleApiClient, this);
-        }
-
-    }
-
-    @Override
     public void onConnectionFailed(ConnectionResult connectionResult) {
 
     }
 
-    public static final int MY_PERMISSIONS_REQUEST_LOCATION = 99;
     public boolean checkLocationPermission(){
         if (ContextCompat.checkSelfPermission(this,
                 Manifest.permission.ACCESS_FINE_LOCATION)
@@ -173,8 +313,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode,
-                                           String permissions[], int[] grantResults) {
+    public void onRequestPermissionsResult(int requestCode,String permissions[], int[] grantResults) {
         switch (requestCode) {
             case MY_PERMISSIONS_REQUEST_LOCATION: {
                 // If request is cancelled, the result arrays are empty.
@@ -205,4 +344,5 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             // You can add here other case statements according to your requirement.
         }
     }
+
 }
